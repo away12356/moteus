@@ -1,16 +1,14 @@
-// Copyright 2023 mjbots Robotic Systems, LLC.  info@mjbots.com
+// 版权所有 2023 mjbots Robotic Systems, LLC.  info@mjbots.com
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// 根据 Apache License, Version 2.0 (the "License") 许可证授权；
+// 除非符合许可证，否则您不能使用此文件。
+// 您可以在以下地址获取许可证副本：
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 除非适用法律要求或书面同意，按照许可证分发的软件
+// 是按“原样”分发的，不附带任何明示或暗示的担保或条件。
+// 请参阅许可证以了解管理权限和限制的具体语言。
 
 #include "fw/fdcan.h"
 
@@ -41,6 +39,7 @@ constexpr uint32_t RoundUpDlc(size_t size) {
   return 0;
 }
 
+// 根据比特率、最大时间段1和最大时间段2计算FDCAN速率
 FDCan::Rate MakeTime(int bitrate, int max_time_seg1, int max_time_seg2) {
   FDCan::Rate result;
 
@@ -52,10 +51,10 @@ FDCan::Rate MakeTime(int bitrate, int max_time_seg1, int max_time_seg2) {
   while (true) {
     total_divisor = (pclk1 / result.prescaler) / bitrate;
 
-    // One of the divisor counts comes for free.
+    // 一个除数计数是免费的。
     const auto actual_divisor = total_divisor - 1;
 
-    // Split up the remainder roughly 3/1
+    // 大约3/1分割余数
     result.time_seg2 = actual_divisor / 3;
     result.time_seg1 = actual_divisor - result.time_seg2;
 
@@ -73,6 +72,7 @@ FDCan::Rate MakeTime(int bitrate, int max_time_seg1, int max_time_seg2) {
   return result;
 }
 
+// 应用速率覆盖
 FDCan::Rate ApplyRateOverride(FDCan::Rate base, FDCan::Rate overlay) {
   if (overlay.prescaler >= 0) {
     base.prescaler = overlay.prescaler;
@@ -90,16 +90,19 @@ FDCan::Rate ApplyRateOverride(FDCan::Rate base, FDCan::Rate overlay) {
 }
 }
 
+// 构造函数
 FDCan::FDCan(const Options& options)
     : options_(options) {
   Init();
 }
 
+// 配置过滤器
 void FDCan::ConfigureFilters(const FilterConfig& filters) {
   options_.filters = filters;
   Init();
 }
 
+// 初始化
 void FDCan::Init() {
   const auto& options = options_;
 
@@ -108,8 +111,7 @@ void FDCan::Init() {
   {
     const auto can_td = pinmap_peripheral(options.td, PinMap_CAN_TD);
     const auto can_rd = pinmap_peripheral(options.rd, PinMap_CAN_RD);
-    can_ = reinterpret_cast<FDCAN_GlobalTypeDef*>(
-        pinmap_merge(can_td, can_rd));
+    can_ = reinterpret_cast<FDCAN_GlobalTypeDef*>(pinmap_merge(can_td, can_rd));
   }
 
   pinmap_pinout(options.td, PinMap_CAN_TD);
@@ -259,9 +261,9 @@ void FDCan::Init() {
     mbed_die();
   };
 
-  /* Configure global filter:
-     Filter all remote frames with STD and EXT ID
-     Reject non matching frames with STD ID and EXT ID */
+  /* 配置全局过滤器：
+     过滤所有带有STD和EXT ID的远程帧
+     拒绝与STD ID和EXT ID不匹配的帧 */
   if (HAL_FDCAN_ConfigGlobalFilter(
           &can,
           map_filter_action(options.filters.global_std_action),
@@ -296,6 +298,7 @@ void FDCan::Init() {
 }
 
 namespace {
+// 应用覆盖
 bool ApplyOverride(bool value, FDCan::Override o) {
   using OV = FDCan::Override;
   switch (o) {
@@ -307,11 +310,12 @@ bool ApplyOverride(bool value, FDCan::Override o) {
 }
 }
 
+// 发送数据
 void FDCan::Send(uint32_t dest_id,
                  std::string_view data,
                  const SendOptions& send_options) {
 
-  // Abort anything we have started that hasn't finished.
+  // 中止任何已经开始但尚未完成的操作。
   if (last_tx_request_) {
     HAL_FDCAN_AbortTxRequest(&hfdcan1_, last_tx_request_);
   }
@@ -340,13 +344,13 @@ void FDCan::Send(uint32_t dest_id,
 
   if (HAL_FDCAN_AddMessageToTxFifoQ(
           &hfdcan1_, &tx_header,
-          const_cast<uint8_t*>(
-              reinterpret_cast<const uint8_t*>(data.data()))) != HAL_OK) {
+          const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(data.data()))) != HAL_OK) {
     mbed_die();
   }
   last_tx_request_ = HAL_FDCAN_GetLatestTxFifoQRequestBuffer(&hfdcan1_);
 }
 
+// 轮询数据
 bool FDCan::Poll(FDCAN_RxHeaderTypeDef* header,
                  mjlib::base::string_span data) {
   if (HAL_FDCAN_GetRxMessage(
@@ -358,20 +362,24 @@ bool FDCan::Poll(FDCAN_RxHeaderTypeDef* header,
   return true;
 }
 
+// 恢复总线
 void FDCan::RecoverBusOff() {
   hfdcan1_.Instance->CCCR &= ~FDCAN_CCCR_INIT;
 }
 
 
+// 获取状态
 FDCAN_ProtocolStatusTypeDef FDCan::status() {
   HAL_FDCAN_GetProtocolStatus(&hfdcan1_, &status_result_);
   return status_result_;
 }
 
+// 获取配置
 FDCan::Config FDCan::config() const {
   return config_;
 }
 
+// 解析数据长度
 int FDCan::ParseDlc(uint32_t dlc_code) {
   if (dlc_code == FDCAN_DLC_BYTES_0) { return 0; }
   if (dlc_code == FDCAN_DLC_BYTES_1) { return 1; }
